@@ -1,0 +1,5 @@
+#!/usr/bin/env ruby
+
+require "httpshot"
+
+Httpshot::CLI.new(ARGV).execute
