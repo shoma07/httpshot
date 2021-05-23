@@ -3,56 +3,66 @@
 module Httpshot
   # Httpshot::CLI
   class CLI
-    attr_accessor :urls
-    attr_accessor :options
-
+    # @param [Array<String>]
     # @return [Httpshot::CLI]
     def initialize(argv)
-      @options = { driver: :chrome, ua: nil }
-      argv = parse!(argv)
-      @urls = argv
+      @options = { driver: 'chrome', ua: nil, width: 360, sleep: 0 }
+      @urls = parse!(argv)
     end
+
+    # @return [void]
+    def execute
+      d = init_driver
+      urls.each { |url| screenshot(d, url) }
+    end
+
+    private
+
+    # !@attribute [r] urls
+    # @return [Array<String>]
+    attr_reader :urls
+    # !@attribute [r] options
+    # @return [Hash]
+    attr_reader :options
 
     # @return [OptionParser]
     def parser
       opt = OptionParser.new
-      opt.on('-d [=VAL]', '--driver [=VAL]', String,
-             "driver default: #{@options[:driver]}") do |v|
-        @options[:driver] = v.to_sym
-      end
-      opt.on('-u [=VAL]', '--user-agent [=VAL]', String, 'user agent') do |v|
-        @options[:ua] = v
+      options.each do |k, v|
+        opt.on("-#{k.to_s[0]} [=VAL]", v.class || String, "#{k} default: #{v}")
       end
       opt
     end
 
-    # @return [Array]
+    # @param argv [Array<String>]
+    # @return [Array<String>]
     def parse!(argv)
       parser.parse!(argv)
       argv
     end
 
-    def execute
-      d = driver
-      @urls.each do |url|
-        screenshot d, url
-      end
+    # @params driver [Selenium::WebDriver::Driver]
+    # @param url [String]
+    # @return [void]
+    def screenshot(driver, url)
+      driver.manage.window.resize_to(options[:width], 0)
+      driver.navigate.to(url)
+      driver.manage.window.resize_to(page_width(driver), page_height(driver))
+      sleep(options[:sleep])
+      driver.save_screenshot(filename(url))
     end
 
-    # @params [Selenium::WebDriver::Driver]
-    def screenshot(d, url)
-      d.navigate.to url
-      w = d.execute_script width_script
-      h = d.execute_script height_script
-      d.manage.window.resize_to(w + 100, h + 100)
-      d.save_screenshot "#{Time.now.strftime('%Y%m%d%H%M%S%L')}_httpshot.png"
+    # @param url [String]
+    # @return [String]
+    def filename(url)
+      "#{Time.now.strftime('%Y%m%d%H%M%S%L')}_#{URI.encode_www_form_component(url)}_httpshot.png"
     end
 
     # @return [Selenium::WebDriver::Driver]
-    def driver
+    def init_driver
       Webdrivers.install_dir = File.expand_path '../../drivers', __dir__
-      case @options[:driver]
-      when :chrome
+      case options[:driver]
+      when 'chrome'
         chrome_driver
       else
         raise ArgumentError
@@ -61,16 +71,16 @@ module Httpshot
 
     # @return [Selenium::WebDriver::Driver]
     def chrome_driver
-      Webdrivers::Chromedriver.required_version = '79.0.3945.36'
       d_options = Selenium::WebDriver::Chrome::Options.new
-      d_options.add_argument '--headless'
-      d_options.add_argument "--user-agent=#{@options[:ua]}" if @options[:ua]
-      Selenium::WebDriver.for :chrome, options: d_options
+      d_options.headless!
+      d_options.add_argument("--user-agent=#{options[:ua]}") if options[:ua]
+      Selenium::WebDriver.for(:chrome, options: d_options)
     end
 
-    # @return [String]
-    def width_script
-      <<~JS
+    # @params [Selenium::WebDriver::Driver]
+    # @return [Integer]
+    def page_width(driver)
+      driver.execute_script(<<~JS)
         return Math.max(
           document.body.scrollWidth, document.body.offsetWidth,
           document.documentElement.clientWidth,
@@ -80,9 +90,10 @@ module Httpshot
       JS
     end
 
-    # @return [String]
-    def height_script
-      <<~JS
+    # @params [Selenium::WebDriver::Driver]
+    # @return [Integer]
+    def page_height(driver)
+      driver.execute_script(<<~JS)
         return Math.max(
           document.body.scrollHeight, document.body.offsetHeight,
           document.documentElement.clientHeight,

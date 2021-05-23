@@ -17,7 +17,7 @@ And then execute:
 ## Usage
 
 ```
-$ httpshot <url>
+$ bundle exec httpshot <url>
 ```
 
 ## License
